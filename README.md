@@ -87,7 +87,7 @@ describe('OrderComponent', () => {
 Two details matter here:
 
 - **`components` takes a lazy loader, not a static import.** A top-of-file `import { OrderComponent } from './order.component'` runs `@Component` immediately, before `beforeAll` gets a chance to seed any mocks — the real `OrderService` would already be built and cached. `createTestingApp` seeds `overrides` into the registry first, *then* awaits your loader, so the import happens after the mocks are in place.
-- **`app.engine` is a bare Express app — never bound to a port.** `createTestingApp` never calls `DolphFactory#start()`. `start()` binds a real socket and installs process-level `SIGTERM`/`uncaughtException`/`unhandledRejection` handlers meant for a long-running server; registering those once per spec file is exactly why a `.start()`-based suite needs `jest --forceExit --detectOpenHandles` to exit cleanly. `examples/` in this repo runs three full tiers, including a real e2e test, and exits on its own with neither flag — see `npm run test:examples`.
+- **`app.engine` is a real, already-listening server — not a bare Express app.** `createTestingApp` never calls `DolphFactory#start()`, so it never installs `start()`'s process-level `SIGTERM`/`uncaughtException`/`unhandledRejection` handlers meant for a long-running server; registering those once per spec file is exactly why a `.start()`-based suite needs `jest --forceExit --detectOpenHandles` to exit cleanly. But it does bind one real ephemeral port via `http.createServer(engine).listen(0)`, reused for every request in the spec and closed by `app.close()` — supertest binds a **fresh** ephemeral server on every single call when handed a bare Express app instead of one already listening, which gets expensive fast on anything but a one-or-two-request spec. `examples/` in this repo runs three full tiers, including a real e2e test with several requests, and exits on its own with neither Jest flag — see `npm run test:examples`.
 
 ## Jest config gotcha
 
@@ -108,7 +108,7 @@ At enterprise scale — hundreds of spec files — `ts-jest` type-checking every
 - **`TestingRegistry.override(ServiceClass, mock)`** — seed a mock directly, for cases `createTestingApp`'s `overrides` doesn't cover.
 - **`TestingRegistry.get(ServiceClass)` / `.has(...)`** — read the current registry state.
 - **`TestingRegistry.reset()`** — clear every cached service. Call between test files, never mid-file.
-- **`createTestingApp({ components, overrides?, middlewares? })`** — see above. Returns `{ engine, get, close }`.
+- **`createTestingApp({ components, overrides?, middlewares? })`** — see above. Returns `{ engine, get, close }`; `close()` is async — it closes the ephemeral server before resolving, so `afterAll(() => app.close())` is enough (Jest awaits the returned promise).
 - **`createSqliteTestDataSource({ entities })`** — in-memory `better-sqlite3` TypeORM `DataSource`, entity classes passed directly (no glob strings, no `dolph_config.yaml`).
 - **`createSqliteTestSequelize()`** — in-memory `sqlite3` Sequelize instance; call `Model.init({...}, { sequelize })` against it yourself.
 - **`createMongoMemoryTestServer()`** — real ephemeral MongoDB via `mongodb-memory-server`; returns `{ uri, stop }`.

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
+import { createServer, Server } from 'http';
 import { DolphFactory, GlobalServiceRegistry } from '@dolphjs/dolph';
-import type { Express, RequestHandler } from 'express';
+import type { RequestHandler } from 'express';
 import type { Ctor } from './testing-registry';
 
 /**
@@ -26,12 +27,12 @@ export interface TestingAppOptions {
 }
 
 export interface TestingApp {
-    /** Bare Express app — hand it straight to supertest. No port is bound, no server is started. */
-    engine: Express;
+    /** A real, already-listening ephemeral server — hand it straight to supertest. */
+    engine: Server;
     /** Reads a service instance (real or mocked) straight off the registry, for direct assertions. */
     get<T>(serviceClass: Ctor<T>): T | undefined;
-    /** Clears the process-wide registry. Call in `afterAll`/`afterEach` for isolation from the next test. */
-    close(): void;
+    /** Closes the ephemeral server and clears the process-wide registry. Call in `afterAll`. */
+    close(): Promise<void>;
 }
 
 const isLoader = (ref: ComponentRef): ref is () => Promise<Ctor | { default: Ctor }> =>
@@ -40,12 +41,19 @@ const isLoader = (ref: ComponentRef): ref is () => Promise<Ctor | { default: Cto
 /**
  * Builds an isolated Dolph app for tests, without ever calling `DolphFactory#start()`.
  *
- * `start()` binds a real OS port and installs process-level `SIGTERM` /
- * `uncaughtException` / `unhandledRejection` handlers meant for a long-running
- * server — registering those once per spec file leaks across every other file
- * that runs in the same Jest worker, which is exactly why the framework's own
- * suite has to run with `--forceExit --detectOpenHandles`. `engine()` returns
- * the plain Express app; supertest drives it directly with no listener to leak.
+ * `start()` installs process-level `SIGTERM`/`uncaughtException`/`unhandledRejection`
+ * handlers meant for a long-running server — registering those once per spec
+ * file leaks across every other file that runs in the same Jest worker,
+ * which is exactly why the framework's own suite used to need
+ * `--forceExit --detectOpenHandles`.
+ *
+ * That said, `engine` is a real, listening server, not a bare Express app —
+ * supertest binds a brand new ephemeral server on every single request when
+ * handed a plain app instead of one already listening, which gets expensive
+ * fast across a spec with more than a handful of requests. Binding one
+ * ephemeral port here, reused for every request and closed in `close()`,
+ * gets the same effect `start()` gives a real app without its process-level
+ * side effects.
  */
 export async function createTestingApp(options: TestingAppOptions): Promise<TestingApp> {
     const { components, overrides = [], middlewares } = options;
@@ -69,10 +77,15 @@ export async function createTestingApp(options: TestingAppOptions): Promise<Test
     }
 
     const factory = new DolphFactory(resolved as any, middlewares);
+    const server = createServer(factory.engine()).listen(0);
 
     return {
-        engine: factory.engine(),
+        engine: server,
         get: (serviceClass) => GlobalServiceRegistry.get(serviceClass),
-        close: () => GlobalServiceRegistry._reset(),
+        close: () =>
+            new Promise<void>((resolve) => {
+                GlobalServiceRegistry._reset();
+                server.close(() => resolve());
+            }),
     };
 }
