@@ -22,8 +22,10 @@ export interface TestingAppOptions {
     components: ComponentRef[];
     /** Mocks seeded into the registry before `components` are resolved. */
     overrides?: ServiceOverride[];
-    /** Applied before route registration — same ordering as `DolphFactory`'s constructor. */
+    /** The `middlewares` option of `DolphFactory`, applied before routes. */
     middlewares?: RequestHandler[];
+    /** Connects the databases in `dolph_config.yaml` before returning. Off by default. */
+    connect?: boolean;
 }
 
 export interface TestingApp {
@@ -31,7 +33,7 @@ export interface TestingApp {
     engine: Server;
     /** Reads a service instance (real or mocked) straight off the registry, for direct assertions. */
     get<T>(serviceClass: Ctor<T>): T | undefined;
-    /** Closes the ephemeral server and clears the process-wide registry. Call in `afterAll`. */
+    /** Closes the ephemeral server and any databases, and clears the process-wide registry. Call in `afterAll`. */
     close(): Promise<void>;
 }
 
@@ -56,7 +58,7 @@ const isLoader = (ref: ComponentRef): ref is () => Promise<Ctor | { default: Cto
  * side effects.
  */
 export async function createTestingApp(options: TestingAppOptions): Promise<TestingApp> {
-    const { components, overrides = [], middlewares } = options;
+    const { components, overrides = [], middlewares, connect = false } = options;
 
     // 1. Seed mocks first — see the module-level doc comment on why ordering matters.
     for (const { service, useValue } of overrides) {
@@ -76,16 +78,21 @@ export async function createTestingApp(options: TestingAppOptions): Promise<Test
         }
     }
 
-    const factory = new DolphFactory(resolved as any, middlewares);
+    const factory = new DolphFactory(resolved as any, { middlewares });
+
+    if (connect) {
+        await factory.ready();
+    }
+
     const server = createServer(factory.engine()).listen(0);
 
     return {
         engine: server,
         get: (serviceClass) => GlobalServiceRegistry.get(serviceClass),
-        close: () =>
-            new Promise<void>((resolve) => {
-                GlobalServiceRegistry._reset();
-                server.close(() => resolve());
-            }),
+        close: async () => {
+            GlobalServiceRegistry._reset();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await factory.stop();
+        },
     };
 }
