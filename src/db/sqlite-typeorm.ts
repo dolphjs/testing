@@ -10,7 +10,7 @@ export interface SqliteTestDataSourceOptions {
 /**
  * An in-memory, `better-sqlite3`-backed TypeORM `DataSource` for tests.
  *
- * Bypasses `autoInitTypeOrm`/`dolph_config.yaml` entirely — those exist to
+ * Bypasses `dolph_config.yaml` entirely — those exist to
  * wire a real database at app boot, which is unnecessary ceremony (and a
  * shared on-disk file mutation) for a test that just needs a throwaway
  * schema. Requires `typeorm` and `better-sqlite3` in the consuming app;

@@ -6,7 +6,7 @@ export interface MongoMemoryTestServer {
 /**
  * Spins up a real, ephemeral MongoDB instance in-process for tests — no
  * mocked driver, no shared dev database. Pass `.uri` to `mongoose.connect()`
- * (or `autoInitMongo({ url: uri })`) in your test setup, and `.stop()` in
+ * in your test setup, and `.stop()` in
  * teardown. Requires `mongodb-memory-server` in the consuming app; lazily
  * required so apps that don't use Mongoose never pay to resolve it.
  */

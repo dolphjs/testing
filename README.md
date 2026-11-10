@@ -108,12 +108,11 @@ At enterprise scale — hundreds of spec files — `ts-jest` type-checking every
 - **`TestingRegistry.override(ServiceClass, mock)`** — seed a mock directly, for cases `createTestingApp`'s `overrides` doesn't cover.
 - **`TestingRegistry.get(ServiceClass)` / `.has(...)`** — read the current registry state.
 - **`TestingRegistry.reset()`** — clear every cached service. Call between test files, never mid-file.
-- **`createTestingApp({ components, overrides?, middlewares? })`** — see above. Returns `{ engine, get, close }`; `close()` is async — it closes the ephemeral server before resolving, so `afterAll(() => app.close())` is enough (Jest awaits the returned promise).
+- **`createTestingApp({ components, overrides?, middlewares?, connect? })`** — see above. Returns `{ engine, get, close }`; `close()` is async — it closes the ephemeral server before resolving, so `afterAll(() => app.close())` is enough (Jest awaits the returned promise).
 - **`createSqliteTestDataSource({ entities })`** — in-memory `better-sqlite3` TypeORM `DataSource`, entity classes passed directly (no glob strings, no `dolph_config.yaml`).
-- **`createSqliteTestSequelize()`** — in-memory `sqlite3` Sequelize instance; call `Model.init({...}, { sequelize })` against it yourself.
 - **`createMongoMemoryTestServer()`** — real ephemeral MongoDB via `mongodb-memory-server`; returns `{ uri, stop }`.
 
-The three DB helpers lazily `require()` their driver, so an app that only uses Mongoose never resolves `typeorm`/`sequelize`, and vice versa — install only what you use.
+The two DB helpers lazily `require()` their driver, so an app that only uses Mongoose never resolves `typeorm`, and vice versa — install only what you use.
 
 ## Development
 
